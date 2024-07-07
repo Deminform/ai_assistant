@@ -88,11 +88,12 @@ def chat_with_gpt(prompt):
         print(f"Произошла ошибка: {e}")
         return "Произошла ошибка. Попробуйте позже."
 
+
 if __name__ == "__main__":
     while True:
         command = listen()
-        if command.lower() == "стоп":
-            speak("До свидания!", speed=speed_talk)
+        if command.lower() in ['стоп', 'stop', 'отвянь', 'мы закончили', 'exit']:
+            speak("шшш... свя.... связь плоха... не слы...ааааа я всё.. закон... закончили!", speed=speed_talk)
             break
         response = chat_with_gpt(command)
         print(f"GPT-4: {response}")
