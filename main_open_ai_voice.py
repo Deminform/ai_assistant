@@ -1,10 +1,11 @@
 import os
-from openai import OpenAI
-import gtts
+import openai
 import speech_recognition as sr
+import requests
 import pygame
 from tempfile import NamedTemporaryFile
 from dotenv import load_dotenv
+from openai import OpenAI
 
 load_dotenv()
 
@@ -12,6 +13,7 @@ load_dotenv()
 openai_api_key = os.getenv('OPENAI_API_KEY')
 
 client = OpenAI(api_key=openai_api_key)
+
 
 
 def generate_response(prompt, lang="ru"):
@@ -34,40 +36,42 @@ def generate_response(prompt, lang="ru"):
     return message
 
 
+def synthesize_speech(text, voice="alloy", model="tts-1", response_format="mp3", speed=1.0):
+    url = "https://api.openai.com/v1/audio/speech"
+    headers = {
+        "Authorization": f"Bearer {openai_api_key}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "model": model,
+        "input": text,
+        "voice": voice,
+        "response_format": response_format,
+        "speed": speed
+    }
+    response = requests.post(url, headers=headers, json=data)
+    if response.status_code == 200:
+        audio_content = response.content
+        return audio_content
+    else:
+        raise Exception(f"Failed to synthesize speech: {response.text}")
 
-def online_tts(text, lang="ru", speed=1.2):
-    output_folder = os.path.expanduser("~/JarvisOutput")
-    os.makedirs(output_folder, exist_ok=True)
 
-    with NamedTemporaryFile(delete=False) as output_file:
-        tts = gtts.gTTS(text, lang=lang, slow=False)
-        tts.save(output_file.name)
-        output_file.seek(0)
-
+def play_audio(audio_content):
     pygame.init()
     pygame.mixer.init()
 
-    sound = pygame.mixer.Sound(output_file.name)
-    sound.set_volume(1.0)
-    channel = sound.play()
+    with NamedTemporaryFile(delete=False) as audio_file:
+        audio_file.write(audio_content)
+        temp_filename = audio_file.name  # Сохраняем имя файла
 
-    # Устанавливаем скорость воспроизведения
-    channel.set_volume(speed)
+    # Теперь загружаем и проигрываем звук после закрытия файла
+    sound = pygame.mixer.Sound(temp_filename)
+    sound.play()
+    while pygame.mixer.get_busy():
+        pygame.time.Clock().tick(10)
 
-    if channel is not None:
-        channel.set_endevent(pygame.USEREVENT)
-        is_playing = True
-        while is_playing:
-            for event in pygame.event.get():
-                if event.type == pygame.USEREVENT:
-                    is_playing = False
-                    break
-            pygame.time.Clock().tick(10)
-
-    pygame.mixer.quit()
-    pygame.time.wait(500)
-    os.remove(output_file.name)
-
+    os.remove(temp_filename)  # Удаляем файл вручную после воспроизведения
 
 
 def recognize_speech_from_mic(recognizer, microphone, lang="ru-RU"):
@@ -86,8 +90,7 @@ def recognize_speech_from_mic(recognizer, microphone, lang="ru-RU"):
         print(f"Could not request results from Google Speech Recognition service; {e}")
 
 
-
-def main(lang="ru", speed=1.2):
+def main(lang="ru"):
     recognizer = sr.Recognizer()
     microphone = sr.Microphone()
 
@@ -111,9 +114,9 @@ def main(lang="ru", speed=1.2):
 
         print(f"AI: {response}")
 
-        online_tts(response, lang, speed)
+        audio_content = synthesize_speech(response)
+        play_audio(audio_content)
 
 if __name__ == "__main__":
-    # Установка языка и скорости. Пример для русского языка и скорости 1.2
-    main(lang="ru", speed=1.2)
+    main(lang="ru")
 
