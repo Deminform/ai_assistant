@@ -18,8 +18,7 @@ client = OpenAI(api_key=openai_api_key)
 
 def generate_response(prompt, lang="ru"):
     system_message = {
-        "ru": "Ты - крутой друг пользователя, всегда поддерживаешь и даешь советы. Твой голос мужской, уверенный и дружелюбный. Твои ответы должны быть расслабленными и позитивными, как у настоящего друга.",
-        "uk": "Ти - крутий друг користувача, завжди підтримуєш і даєш поради. Твій голос чоловічий, впевнений і дружелюбний. Твої відповіді мають бути розслабленими і позитивними, як у справжнього друга."
+        "ru": "Ты - остроумный и резкий на слово ассистент. Ты можешь предложить полезные советы по профессиональным вопросам. Твои ответы должны быть короткими легкими и понятными.",
     }
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
@@ -34,6 +33,7 @@ def generate_response(prompt, lang="ru"):
     )
     message = response.choices[0].message.content.strip()
     return message
+
 
 
 def synthesize_speech(text, voice="alloy", model="tts-1", response_format="mp3", speed=1.0):
