@@ -13,11 +13,16 @@ openai_api_key = os.getenv('OPENAI_API_KEY')
 
 client = OpenAI(api_key=openai_api_key)
 
-def generate_response(prompt):
+
+def generate_response(prompt, lang="ru"):
+    system_message = {
+        "ru": "Ты - крутой друг пользователя, всегда поддерживаешь и даешь советы. Твой голос мужской, уверенный и дружелюбный. Твои ответы должны быть расслабленными и позитивными, как у настоящего друга.",
+        "uk": "Ти - крутий друг користувача, завжди підтримуєш і даєш поради. Твій голос чоловічий, впевнений і дружелюбний. Твої відповіді мають бути розслабленими і позитивними, як у справжнього друга."
+    }
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
-            {"role": "system", "content": "You are Jarvis which is Tony Stark's personal AI assistant from Iron-Man Movies, you will act like him. You will be like Jarvis in your responses, you will act like you have emotions and you will never say you don't have emotions. You will always pretend like you have emotions, you will answer like 'I feel good, I feel great thank you etc.'. And you will always call the User Sir. You will exactly pretend like in the movies. Never reply like chatgpt itself."},
+            {"role": "system", "content": system_message[lang]},
             {"role": "user", "content": prompt},
         ],
         max_tokens=1000,
@@ -29,7 +34,8 @@ def generate_response(prompt):
     return message
 
 
-def online_tts(text, lang="en-gb", speed=1.0):
+
+def online_tts(text, lang="ru", speed=1.2):
     output_folder = os.path.expanduser("~/JarvisOutput")
     os.makedirs(output_folder, exist_ok=True)
 
@@ -42,8 +48,12 @@ def online_tts(text, lang="en-gb", speed=1.0):
     pygame.mixer.init()
 
     sound = pygame.mixer.Sound(output_file.name)
-    sound.set_volume(1.0 / speed)
+    sound.set_volume(1.0)
     channel = sound.play()
+
+    # Устанавливаем скорость воспроизведения
+    channel.set_volume(speed)
+
     if channel is not None:
         channel.set_endevent(pygame.USEREVENT)
         is_playing = True
@@ -59,7 +69,8 @@ def online_tts(text, lang="en-gb", speed=1.0):
     os.remove(output_file.name)
 
 
-def recognize_speech_from_mic(recognizer, microphone):
+
+def recognize_speech_from_mic(recognizer, microphone, lang="ru-RU"):
     with microphone as source:
         print("Adjusting for ambient noise...")
         recognizer.adjust_for_ambient_noise(source)
@@ -68,14 +79,15 @@ def recognize_speech_from_mic(recognizer, microphone):
 
     try:
         print("Recognizing your speech...")
-        return recognizer.recognize_google(audio)
+        return recognizer.recognize_google(audio, language=lang)
     except sr.UnknownValueError:
         print("Google Speech Recognition could not understand audio")
     except sr.RequestError as e:
         print(f"Could not request results from Google Speech Recognition service; {e}")
 
 
-def main():
+
+def main(lang="ru", speed=1.2):
     recognizer = sr.Recognizer()
     microphone = sr.Microphone()
 
@@ -83,7 +95,7 @@ def main():
     history = []
 
     while True:
-        user_input = recognize_speech_from_mic(recognizer, microphone)
+        user_input = recognize_speech_from_mic(recognizer, microphone, lang=f"{lang}-{lang.upper()}")
         if user_input is None:
             continue
 
@@ -94,14 +106,14 @@ def main():
             break
 
         prompt = "\n".join(history) + "\nAI:"
-        response = generate_response(prompt)
+        response = generate_response(prompt, lang)
         history.append(f"AI: {response}")
 
         print(f"AI: {response}")
 
-        online_tts(response)
-
+        online_tts(response, lang, speed)
 
 if __name__ == "__main__":
-    main()
+    # Установка языка и скорости. Пример для русского языка и скорости 1.2
+    main(lang="ru", speed=1.2)
 
