@@ -1,31 +1,40 @@
-#########################################################
+import pyaudio
+import wave
 
+# Настройка параметров
+FORMAT = pyaudio.paInt16
+CHANNELS = 2
+RATE = 44100
+CHUNK = 1024
+RECORD_SECONDS = 5
+WAVE_OUTPUT_FILENAME = "system_sounds/output.wav"
 
-from pathlib import Path
-from openai import OpenAI
-client = OpenAI()
+audio = pyaudio.PyAudio()
 
-speech_file_path = Path(__file__).parent / "speech.mp3"
-response = client.audio.speech.create(
-  model="tts-1",
-  voice="alloy",
-  input="Today is a wonderful day to build something people love!"
-)
+# Запуск записи
+stream = audio.open(format=FORMAT, channels=CHANNELS,
+                rate=RATE, input=True,
+                frames_per_buffer=CHUNK)
 
-response.stream_to_file(speech_file_path)
+print("Recording...")
 
+frames = []
 
-from openai import OpenAI
+for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):
+    data = stream.read(CHUNK)
+    frames.append(data)
 
-client = OpenAI()
+print("Finished recording.")
 
-response = client.audio.speech.create(
-    model="tts-1",
-    voice="alloy",
-    input="Hello world! This is a streaming test.",
-)
+# Остановка записи
+stream.stop_stream()
+stream.close()
+audio.terminate()
 
-response.stream_to_file("output.mp3")
-
-
-#########################################################
+# Сохранение файла
+waveFile = wave.open(WAVE_OUTPUT_FILENAME, 'wb')
+waveFile.setnchannels(CHANNELS)
+waveFile.setsampwidth(audio.get_sample_size(FORMAT))
+waveFile.setframerate(RATE)
+waveFile.writeframes(b''.join(frames))
+waveFile.close()
