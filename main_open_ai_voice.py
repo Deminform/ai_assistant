@@ -11,6 +11,7 @@ import numpy as np
 from dotenv import load_dotenv
 from openai import OpenAI
 
+
 load_dotenv()
 
 # Замените ваш API-ключ OpenAI
@@ -21,7 +22,7 @@ client = OpenAI(api_key=openai_api_key)
 def generate_response(prompt, lang="ru"):
     start_time = time.time()
     system_message = {
-        "ru": "Ты - инопланетянин"
+        "ru": "Ты - Джарвис из Iron Man, но не будь сильно вежливым"
     }
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
