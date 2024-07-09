@@ -13,8 +13,6 @@ from dotenv import load_dotenv
 import subprocess
 
 load_dotenv()
-
-# Замените ваш API-ключ OpenAI
 openai_api_key = os.getenv('OPENAI_API_KEY')
 
 
@@ -38,7 +36,8 @@ def is_significant_audio(file_path, threshold=500):
 def generate_response(prompt, lang="ru"):
     start_time = time.time()
     system_message = {
-        "ru": "Ты - Джарвис из Iron Man, но не будь сильно вежливым"
+        "ru": "Ты - Джарвис из Iron Man, но не будь сильно вежливым. "
+              "Ты гуру пайтона если тебя просят работать с кодом или файлами. "
     }
     response = requests.post(
         "https://api.openai.com/v1/chat/completions",
@@ -162,21 +161,17 @@ def recognize_speech_from_mic_whisper(lang="ru"):
     try:
         audio = audio_queue.get()
 
-        # Сохраняем аудио во временный файл
         temp_audio_file = "temp_audio.wav"
         with open(temp_audio_file, "wb") as f:
             f.write(audio.get_wav_data())
 
-        # Предварительная обработка аудио
         preprocessed_audio_file = "preprocessed_audio.wav"
         preprocess_audio(temp_audio_file, preprocessed_audio_file)
 
-        # Проверка наличия значимого сигнала
         if not is_significant_audio(preprocessed_audio_file):
             print("No significant audio detected.")
             return ""
 
-        # Отправляем предварительно обработанное аудио на Whisper API
         with open(preprocessed_audio_file, "rb") as audio_file:
             print("Sending audio to Whisper API...")
             response = requests.post(
@@ -217,50 +212,132 @@ def read_file_content(file_path):
         return None
 
 
+def request_file_path():
+    synthesize_speech_stream("Пожалуйста, укажите путь к файлу.")
+    file_path = input("Введите путь к файлу: ")
+    return file_path
+
+
+def request_file_content():
+    synthesize_speech_stream("Что вы хотите записать в файл?")
+    return recognize_speech_from_mic_whisper()
+
+
+def write_to_file(file_path, content):
+    try:
+        with open(file_path, 'a', encoding='utf-8') as file:  # 'a' для добавления, 'w' для перезаписи
+            file.write(content + "\n")
+        return True
+    except Exception as e:
+        print(f"Error writing to file {file_path}: {e}")
+        return False
+
+
+def is_code(content):
+    code_indicators = ['def ', 'class ', '{', '}', ';', 'import ', '#include']
+    return any(indicator in content for indicator in code_indicators)
+
+
+def discuss_file_content(content):
+    while True:
+        synthesize_speech_stream("Хотите обсудить содержимое файла? Скажите 'да' или 'нет'.")
+        user_input = recognize_speech_from_mic_whisper()
+
+        if user_input.lower() == "да":
+            if is_code(content):
+                synthesize_speech_stream("Файл содержит код. Проверьте содержимое на экране.")
+                print(f"Содержимое файла: {content}")
+            elif len(content) > 500:
+                synthesize_speech_stream("Файл слишком большой для чтения вслух. Проверьте содержимое на экране.")
+                print(f"Содержимое файла: {content}")
+            else:
+                synthesize_speech_stream(f"Содержимое файла: {content}")
+
+            synthesize_speech_stream("Хотите изменить содержимое или подтвердить запись? Скажите 'изменить', 'записывай' или 'отмена'.")
+            user_input = recognize_speech_from_mic_whisper()
+
+            if user_input.lower() == "изменить":
+                synthesize_speech_stream("Что вы хотите записать в файл?")
+                new_input = recognize_speech_from_mic_whisper()
+                prompt = f"Сгенерируй текст на тему: {new_input}"
+                content = generate_response(prompt)
+                print(f"Новое содержимое для записи: {content}")
+                continue
+            elif user_input.lower() == "записывай":
+                return content
+            elif user_input.lower() == "отмена":
+                synthesize_speech_stream("Операция отменена.")
+                return None
+            else:
+                synthesize_speech_stream("Неизвестная команда. Попробуйте снова.")
+        elif user_input.lower() == "нет":
+            synthesize_speech_stream("Хорошо. Что-то еще?")
+            return None
+        else:
+            synthesize_speech_stream("Неизвестная команда. Попробуйте снова.")
+
+
+
+def confirm_and_write_to_file(file_path, content):
+    confirmation = recognize_speech_from_mic_whisper()
+    if confirmation.lower() == "записывай":
+        success = write_to_file(file_path, content)
+        if success:
+            synthesize_speech_stream("Запись выполнена успешно.")
+        else:
+            synthesize_speech_stream("Ошибка при записи в файл.")
+    else:
+        synthesize_speech_stream("Операция отменена.")
+
+
 def main(lang="ru"):
     print("Welcome to the Voice-Enabled Chatbot")
     history = []
-    waiting_for_file_path = False
 
     while True:
-        if waiting_for_file_path:
-            # Ждём ввода пути к файлу
-            user_input = input("Please enter the file path: ")
-        else:
-            print("Starting speech recognition...")
-            user_input = recognize_speech_from_mic_whisper(lang)
-
+        start_time = time.time()
+        print("Starting speech recognition...")
+        user_input = recognize_speech_from_mic_whisper(lang)
         if not user_input:
             print("No input detected, continuing...")
             continue
-
         print(f"You: {user_input}")
-
-        if waiting_for_file_path:
-            file_path = user_input.strip()
-            file_content = read_file_content(file_path)
-            if file_content:
-                print(f"File content:\n{file_content}")
-                history.append(f"File content: {file_content}")
-                prompt = "\n".join(history) + "\nAI:"
-                response = generate_response(prompt, lang)
-                history.append(f"AI: {response}")
-                print(f"AI: {response}")
-                synthesize_speech_stream(response)
-            else:
-                print("Failed to read the file.")
-            waiting_for_file_path = False
-            continue
-
         history.append(f"User: {user_input}")
 
         if user_input.lower() in ["quit", "exit", "bye"]:
             break
 
-        if user_input.lower().startswith("прочитай файл"):
-            waiting_for_file_path = True
-            print("Please enter the file path.")
+        if "запиши в файл" in user_input.lower() or "создай файл" in user_input.lower() or "добавь в файл" in user_input.lower():
+            file_path = request_file_path()
+            if not file_path:
+                synthesize_speech_stream("Не удалось распознать путь к файлу.")
+                continue
+
+            content = discuss_file_content()
+            if content:
+                confirm_and_write_to_file(file_path, content)
             continue
+
+        if "прочитай файл" in user_input.lower() or "открой файл" in user_input.lower():
+            file_path = request_file_path()
+            if not file_path:
+                synthesize_speech_stream("Не удалось распознать путь к файлу.")
+                continue
+
+            content = read_file_content(file_path)
+            history.append(content)
+            if content:
+                print(f"Содержимое файла: {content}")
+                if is_code(content):
+                    synthesize_speech_stream("Файл содержит код. Проверьте его на экране.")
+                elif len(content) > 500:
+                    synthesize_speech_stream("Файл слишком большой для чтения вслух. Проверьте его на экране.")
+                else:
+                    synthesize_speech_stream(f"Содержимое файла: {content}")
+            else:
+                synthesize_speech_stream("Не удалось прочитать файл.")
+            continue
+
 
         prompt = "\n".join(history) + "\nAI:"
         response = generate_response(prompt, lang)
@@ -268,7 +345,9 @@ def main(lang="ru"):
 
         print(f"AI: {response}")
 
+        start_time = time.time()
         synthesize_speech_stream(response)
+        print(f"Speech synthesis and playback took {time.time() - start_time:.2f} seconds")
 
         print("Starting speech recognition immediately after playback...")
 
