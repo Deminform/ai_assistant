@@ -1,11 +1,11 @@
 import os
 import time
+import re
 import queue
 import threading
 import pygame
 import sounddevice as sd
 import numpy as np
-from scipy.io.wavfile import write
 from scipy.io import wavfile
 import requests
 import speech_recognition as sr
@@ -13,8 +13,6 @@ from dotenv import load_dotenv
 import subprocess
 
 load_dotenv()
-
-# Замените ваш API-ключ OpenAI
 openai_api_key = os.getenv('OPENAI_API_KEY')
 
 
@@ -38,7 +36,7 @@ def is_significant_audio(file_path, threshold=500):
 def generate_response(prompt, lang="ru"):
     start_time = time.time()
     system_message = {
-        "ru": "Ты - Джарвис из Iron Man, но не будь сильно вежливым"
+        "ru": "Ты - Лучший на свете програмист, ты все знаешь про Python и готов помочь. Твоя задача работать с кодом, улучшать то о чем тебя просят в коде"
     }
     response = requests.post(
         "https://api.openai.com/v1/chat/completions",
@@ -52,7 +50,7 @@ def generate_response(prompt, lang="ru"):
                 {"role": "system", "content": system_message[lang]},
                 {"role": "user", "content": prompt},
             ],
-            "max_tokens": 1000,
+            "max_tokens": 3000,
             "n": 1,
             "stop": None,
             "temperature": 1.0,
@@ -150,7 +148,7 @@ def recognize_speech_from_mic_whisper(lang="ru"):
     audio_queue = queue.Queue()
 
     def play_signal_and_listen(audio_queue):
-        play_signal('system_sounds/mechanical-key-soft-80731.wav')
+        play_signal('system_sounds/soft-notice-146623.mp3')
         with microphone as source:
             audio = recognizer.listen(source)
         audio_queue.put(audio)
@@ -162,21 +160,17 @@ def recognize_speech_from_mic_whisper(lang="ru"):
     try:
         audio = audio_queue.get()
 
-        # Сохраняем аудио во временный файл
         temp_audio_file = "temp_audio.wav"
         with open(temp_audio_file, "wb") as f:
             f.write(audio.get_wav_data())
 
-        # Предварительная обработка аудио
         preprocessed_audio_file = "preprocessed_audio.wav"
         preprocess_audio(temp_audio_file, preprocessed_audio_file)
 
-        # Проверка наличия значимого сигнала
         if not is_significant_audio(preprocessed_audio_file):
             print("No significant audio detected.")
             return ""
 
-        # Отправляем предварительно обработанное аудио на Whisper API
         with open(preprocessed_audio_file, "rb") as audio_file:
             print("Sending audio to Whisper API...")
             response = requests.post(
@@ -217,12 +211,64 @@ def read_file_content(file_path):
         return None
 
 
+def request_file_path():
+    synthesize_speech_stream("Пожалуйста, укажите путь к файлу.")
+    file_path = input("Введите путь к файлу: ")
+    return file_path
+
+
+def request_file_content():
+    synthesize_speech_stream("Что вы хотите записать в файл?")
+    return recognize_speech_from_mic_whisper()
+
+
+def write_to_file(file_path, content):
+    try:
+        with open(file_path, 'w', encoding='utf-8') as file:  # 'w' для перезаписи
+            file.write(content + "\n")
+        return True
+    except Exception as e:
+        print(f"Error writing to file {file_path}: {e}")
+        return False
+
+
+def is_code(content):
+    code_indicators = ['def ', 'class ', '{', '}', ';', 'import ', '#include']
+    return any(indicator in content for indicator in code_indicators)
+
+
+def clean_answer_text(answer_text):
+    punctuation_pattern = re.compile(r'[^\w\s]')
+    return re.sub(punctuation_pattern, '', answer_text).lower()
+
+
+def discuss_file_content(content):
+    while True:
+        synthesize_speech_stream("Что вы хотите изменить в содержимом файла?")
+        user_input = recognize_speech_from_mic_whisper()
+
+        if clean_answer_text(user_input) in ['отмена', 'не надо', 'стой', 'остановись', 'не нужно', 'стоп', 'стоп не надо', 'не надо стоп']:
+            synthesize_speech_stream("Операция отменена.")
+            return None
+
+        prompt = f"Сгенерируй текст на тему: {user_input}"
+        content = generate_response(prompt)
+        print(f"Новое содержимое для записи: {content}")
+
+        synthesize_speech_stream(f"Вот предложение по изменению: {content}\nХотите записать это изменение в файл?")
+        user_confirmation = recognize_speech_from_mic_whisper()
+        if clean_answer_text(user_confirmation) in ['да', 'записывай', 'подтверждаю', 'да записывай']:
+            return content
+        else:
+            synthesize_speech_stream("Операция отменена.")
+            return None
+
+
 def main(lang="ru"):
     print("Welcome to the Voice-Enabled Chatbot")
     history = []
 
     while True:
-        start_time = time.time()
         print("Starting speech recognition...")
         user_input = recognize_speech_from_mic_whisper(lang)
         if not user_input:
@@ -231,8 +277,43 @@ def main(lang="ru"):
         print(f"You: {user_input}")
         history.append(f"User: {user_input}")
 
-        if user_input.lower() in ["quit", "exit", "bye"]:
+        if clean_answer_text(user_input) in ["все пока", "мы закончили", "давай до свидания"]:
             break
+
+        if clean_answer_text(user_input) in ['запиши в файл', 'запиши файл', 'файл запиши', 'добавь код', 'добавь текст', 'добавь код в файл', 'добавь текст в файл', 'добавь код файл']:
+            file_path = request_file_path()
+            if not file_path:
+                synthesize_speech_stream("Не удалось распознать путь к файлу.")
+                continue
+
+            content = discuss_file_content(file_path)
+            if content:
+                success = write_to_file(file_path, content)
+                if success:
+                    synthesize_speech_stream("Запись выполнена успешно.")
+                else:
+                    synthesize_speech_stream("Ошибка при записи в файл.")
+            continue
+
+        if clean_answer_text(user_input) in ['открой файл', 'прочитай файл', 'проверь файл', 'посмотри файл', 'посмотри код', 'проверь код', 'посмотри на мой код', 'взгляни на мой код']:
+            file_path = request_file_path()
+            if not file_path:
+                synthesize_speech_stream("Не удалось распознать путь к файлу.")
+                continue
+
+            content = read_file_content(file_path)
+            history.append(content)
+            if content:
+                print(f"Содержимое файла: {content}")
+                if is_code(content):
+                    synthesize_speech_stream("Файл содержит код. Проверьте его на экране.")
+                elif len(content) > 500:
+                    synthesize_speech_stream("Файл слишком большой для чтения вслух. Проверьте его на экране.")
+                else:
+                    synthesize_speech_stream(f"Содержимое файла: {content}")
+            else:
+                synthesize_speech_stream("Не удалось прочитать файл.")
+            continue
 
         prompt = "\n".join(history) + "\nAI:"
         response = generate_response(prompt, lang)
@@ -244,7 +325,6 @@ def main(lang="ru"):
         synthesize_speech_stream(response)
         print(f"Speech synthesis and playback took {time.time() - start_time:.2f} seconds")
 
-        # Начинаем слушать сразу после завершения воспроизведения
         print("Starting speech recognition immediately after playback...")
 
 
